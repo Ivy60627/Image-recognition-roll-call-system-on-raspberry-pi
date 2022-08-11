@@ -6,6 +6,11 @@ Created on Mon Jul 11 16:57:09 2022
 """
 import sys, time, threading, cv2
 import numpy as np
+import adafruit_dht
+from board import *
+
+
+from tflite_runtime.interpreter import Interpreter
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt 
@@ -17,9 +22,29 @@ from PyQt5.QtGui import QImage, QPixmap
 
 from UI import Ui_MainWindow
 
+data_folder = "ssd_mobilenet/"
+
+model_path = data_folder + "model.tflite"
+label_path = data_folder + "labelmap.txt"
+min_conf_threshold = 0.5
+
+GPIO_PIN= D4 # 定義DHT資料輸入的gpio接腳
+dht_device = adafruit_dht.DHT11(GPIO_PIN, use_pulseio = False)
+
+with open(label_path, "r") as f:
+    labels=[line.strip() for line in f.readlines()]
+    
+interpreter = Interpreter(model_path=model_path)
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+_,height, width, _ = interpreter.get_input_details()[0]["shape"]
+
+
 class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
     rawdata = QtCore.pyqtSignal(np.ndarray)  # 建立傳遞信號，需設定傳遞型態為 np.ndarray
-
+    getstdname = QtCore.pyqtSignal(str)
+    
     def __init__(self, parent=None):
         """ 初始化
             - 執行 QtCore.QThread 的初始化
@@ -31,7 +56,7 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
         # 將父類初始化
         super().__init__(parent)
         # 建立 cv2 的攝影機物件
-        self.cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        self.cam = cv2.VideoCapture(0)
         # 判斷攝影機是否正常連接
         if self.cam is None or not self.cam.isOpened():
             self.connect = False
@@ -42,9 +67,42 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
 
     def run(self):
         """ 執行多執行緒 - 讀取影像 - 發送影像 - 簡易異常處理 """
+        imHeight=480
+        imWidth=640
         # 當正常連接攝影機才能進入迴圈
         while self.running and self.connect:
             ret, img = self.cam.read()    # 讀取影像
+            frame_rgb=cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+            frame_resized=cv2.resize(frame_rgb,(width,height))
+            input_data = np.expand_dims(frame_resized,axis=0)
+            
+            interpreter.set_tensor(input_details[0]["index"],input_data)
+            interpreter.invoke()
+
+            boxes=interpreter.get_tensor(output_details[1]["index"])[0]
+            classes=interpreter.get_tensor(output_details[3]["index"])[0]
+            scores=interpreter.get_tensor(output_details[0]["index"])[0]
+            
+            for i in range(len(scores)):
+                if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
+                    min_y=int(max(1,(boxes[i][0]*imHeight)))
+                    min_x=int(max(1,(boxes[i][1]*imWidth)))
+                    max_y=int(min(imHeight,(boxes[i][2] *imHeight)))
+                    max_x=int(min(imWidth,(boxes[i][3] *imWidth)))
+                    cv2.rectangle(img, (min_x, min_y), (max_x ,max_y), (10,255,0), 2)
+                    object_name = labels[int(classes[i])]
+                    label = "%s: %d%%" %(object_name, int(scores[i] * 100))
+                    
+                    self.getstdname.emit(object_name)
+                    
+                    labelSize, baseLine = cv2.getTextSize(label,
+                                                       cv2.FONT_HERSHEY_SIMPLEX, 0.7,2)
+                    label_min_y = max(min_x,labelSize[1] + 10)
+                    cv2.rectangle(img, (min_x, label_min_y - labelSize[1] - 10),
+                                  (min_x + labelSize[0], label_min_y + baseLine -10),
+                                  (255, 255, 255), cv2.FILLED)
+                    cv2.putText(img, label, (min_x, label_min_y - 7),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
             if ret:
                 self.rawdata.emit(img)    # 發送影像
             else:    # 例外處理
@@ -79,43 +137,50 @@ class SystemTime(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 SystemTime 
         
 class rollCall(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 rollCall 類別    
     stdname = QtCore.pyqtSignal(str)
+    name = ""
+
     def run(self):
         while MainWindow_controller.stop_flag == True :
             gettime = QtCore.QTime.currentTime() # 抓取現在時間
             getmin = gettime.minute() 
             getsec = gettime.second()
             
-            student_name = '姓名' + str(getsec)
-            
+            student_name = '姓名:' + str(self.name)
             self.stdname.emit(student_name)
             
-            if getsec == 0 :
+            if MainWindow_controller.current == True  :
                 with open('test.csv', 'a', newline='') as f:
                     print('{},{}'.format(getmin,student_name),file=f) #儲存資料在csv內
+                current = False
+                time.sleep(5)
+                name = ""
                            
             time.sleep(1) # 暫停一小段時間 不然會卡死
+
 
 class GetTemperature(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 GetTemperature 類別
     temperature = QtCore.pyqtSignal(int)  # 建立傳遞信號，設定傳遞型態為 int
     humidity = QtCore.pyqtSignal(int)
     def run(self):
         while MainWindow_controller.stop_flag == True:
-            gethumi = -1 # 抓取溫溼度
-            gettemp = -1 # 抓取溫溼度
-#           gethumi, gettemp = Adafruit_DHT.read_retry(Adafruit_DHT.DHT11, GPIO_PIN)
+            
+            gettemp=dht_device.temperature # 抓取溫溼度
+            gethumi=dht_device.humidity    # 抓取溫溼度
             if gethumi is not None and gettemp is not None:
-                print('溫度={0:0.1f}度 濕度={1:0.1f}%'.format(gettemp, gethumi))
-                
+                self.temperature.emit(gettemp)
+                self.humidity.emit(gethumi)
             else:
-                print('溫度= -1 度 濕度= -1 %')
-            self.temperature.emit(gettemp)
-            self.humidity.emit(gethumi)
+                gettemp=-1
+                gethumi=-1
+                self.temperature.emit(gettemp)
+                self.humidity.emit(gethumi)
             time.sleep(10) # 暫停一小段時間，不必實時更新，節省資源
-#        self.GetTemperature.stop()
             
                     
 class MainWindow_controller(QtWidgets.QMainWindow):
     stop_flag = True
+    current = False # if data change, current will change to True to save data
+
     def __init__(self, parent=None):
         super().__init__() # in python3, super(Class, self).xxx = super().xxx
         self.ui = Ui_MainWindow()
@@ -125,7 +190,6 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         # 設定 Frame Rate 的參數
         self.frame_num = 0
         
-
         # 設定相機功能
         self.ProcessCam = Camera()  # 建立相機物件
         if self.ProcessCam.connect:
@@ -143,7 +207,6 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.ui.camBtn_open.clicked.connect(self.openCam)  # 槽功能：開啟攝影機
         self.ui.camBtn_stop.clicked.connect(self.stopCam)  # 槽功能：暫停讀取影像
         
-
         
     def getRaw(self, data):  # data 為接收到的影像
         """ 取得影像 """
@@ -196,6 +259,10 @@ class MainWindow_controller(QtWidgets.QMainWindow):
     def getRollCall(self, student_name):
         self.ui.label_name.setText(student_name) # 修改名稱   
 
+    def getStdName(self, object_name):
+        name = object_name # 修改名稱
+        current = True
+        
     def getTemperature(self, temperature):
         self.ui.label_temp.setText('溫度={0:0.1f}度'.format(temperature)) # 修改名稱 
 
