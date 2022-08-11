@@ -44,7 +44,6 @@ _,height, width, _ = interpreter.get_input_details()[0]["shape"]
 class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
     rawdata = QtCore.pyqtSignal(np.ndarray)  # 建立傳遞信號，需設定傳遞型態為 np.ndarray
     getstdname = QtCore.pyqtSignal(str)
-    
     def __init__(self, parent=None):
         """ 初始化
             - 執行 QtCore.QThread 的初始化
@@ -57,6 +56,7 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
         super().__init__(parent)
         # 建立 cv2 的攝影機物件
         self.cam = cv2.VideoCapture(0)
+        self.fps = 0 
         # 判斷攝影機是否正常連接
         if self.cam is None or not self.cam.isOpened():
             self.connect = False
@@ -91,10 +91,7 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
                     max_x=int(min(imWidth,(boxes[i][3] *imWidth)))
                     cv2.rectangle(img, (min_x, min_y), (max_x ,max_y), (10,255,0), 2)
                     object_name = labels[int(classes[i])]
-                    label = "%s: %d%%" %(object_name, int(scores[i] * 100))
-                    
-                    self.getstdname.emit(object_name)
-                    
+                    label = "%s: %d%%" %(object_name, int(scores[i] * 100))                    
                     labelSize, baseLine = cv2.getTextSize(label,
                                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7,2)
                     label_min_y = max(min_x,labelSize[1] + 10)
@@ -103,11 +100,19 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
                                   (255, 255, 255), cv2.FILLED)
                     cv2.putText(img, label, (min_x, label_min_y - 7),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+                    
+                    if self.fps == 1:
+                        self.getstdname.emit(object_name) # control speed
+                        
             if ret:
                 self.rawdata.emit(img)    # 發送影像
             else:    # 例外處理
                 print("Warning!!!")
                 self.connect = False
+                
+            self.fps = self.fps + 1
+            if self.fps == 3:
+                self.fps = 0
 
     def open(self):
         """ 開啟攝影機影像讀取功能 """
@@ -137,35 +142,54 @@ class SystemTime(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 SystemTime 
         
 class rollCall(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 rollCall 類別    
     stdname = QtCore.pyqtSignal(str)
-    name = ""
+    
+    def __init__(self, object_name):
+        super().__init__()
+        self.name = object_name # 修改名稱
 
+        self.current = True
+        
     def run(self):
-        while MainWindow_controller.stop_flag == True :
-            gettime = QtCore.QTime.currentTime() # 抓取現在時間
-            getmin = gettime.minute() 
-            getsec = gettime.second()
+        
+        while self.current == True :
+            #gettime = QtCore.QTime.currentTime() # 抓取現在時間
+            #getmin = gettime.minute() 
+            #getsec = gettime.second()
+            gettime = QtCore.QDateTime.currentDateTime() # 抓取現在時間
+            times = gettime.toString(Qt.DefaultLocaleLongDate) # 轉換成 str 型態
             
-            student_name = '姓名:' + str(self.name)
-            self.stdname.emit(student_name)
+            if MainWindow_controller.deplicate_name != self.name :
+                print(self.name,MainWindow_controller.deplicate_name)
+                MainWindow_controller.deplicate_name = self.name
+                
+                student_name = '姓名:' + str(self.name)
             
-            if MainWindow_controller.current == True  :
-                with open('test.csv', 'a', newline='') as f:
-                    print('{},{}'.format(getmin,student_name),file=f) #儲存資料在csv內
-                current = False
+                self.stdname.emit(student_name)
+            
+                if self.current == True:
+                    with open('test.csv', 'a', newline='') as f:
+                        print('{},{}'.format(times, self.name),file=f) #儲存資料在csv內
+                    self.current = False
                 time.sleep(5)
-                name = ""
-                           
-            time.sleep(1) # 暫停一小段時間 不然會卡死
-
+                student_name = '姓名:'
+                self.stdname.emit(student_name)
+                
+                #MainWindow_controller.deplicate_name = ''
+                          
+            time.sleep(3) # 暫停一小段時間 不然會卡死            
+            #self.stdname.disconnect()
+        
 
 class GetTemperature(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 GetTemperature 類別
     temperature = QtCore.pyqtSignal(int)  # 建立傳遞信號，設定傳遞型態為 int
     humidity = QtCore.pyqtSignal(int)
     def run(self):
         while MainWindow_controller.stop_flag == True:
-            
-            gettemp=dht_device.temperature # 抓取溫溼度
-            gethumi=dht_device.humidity    # 抓取溫溼度
+            try:
+                gettemp=dht_device.temperature # 抓取溫溼度
+                gethumi=dht_device.humidity    # 抓取溫溼度
+            except RuntimeError:
+                pass
             if gethumi is not None and gettemp is not None:
                 self.temperature.emit(gettemp)
                 self.humidity.emit(gethumi)
@@ -179,7 +203,7 @@ class GetTemperature(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 GetTemp
                     
 class MainWindow_controller(QtWidgets.QMainWindow):
     stop_flag = True
-    current = False # if data change, current will change to True to save data
+    deplicate_name = ''
 
     def __init__(self, parent=None):
         super().__init__() # in python3, super(Class, self).xxx = super().xxx
@@ -195,6 +219,7 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         if self.ProcessCam.connect:
             # 連接影像訊號 (rawdata) 至 getRaw()
             self.ProcessCam.rawdata.connect(self.getRaw)  # 槽功能：取得並顯示影像
+            self.ProcessCam.getstdname.connect(self.getStdName)
             # 攝影機啟動按鈕的狀態：ON
             self.ui.camBtn_open.setEnabled(True)
         else:
@@ -256,12 +281,13 @@ class MainWindow_controller(QtWidgets.QMainWindow):
     def getTime(self, times):
         self.ui.label_time.setText(times) # 修改現在時間
  
+    def getStdName(self, object_name):
+        self.rollCall = rollCall(object_name)
+        self.rollCall.start()
+        self.rollCall.stdname.connect(self.getRollCall) # 槽功能：取得姓名資料
+        
     def getRollCall(self, student_name):
         self.ui.label_name.setText(student_name) # 修改名稱   
-
-    def getStdName(self, object_name):
-        name = object_name # 修改名稱
-        current = True
         
     def getTemperature(self, temperature):
         self.ui.label_temp.setText('溫度={0:0.1f}度'.format(temperature)) # 修改名稱 
@@ -271,7 +297,7 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         
     def setup_control(self):
        # TODO        
-        #self.ui.label_name.setText(self.student_name)
+        self.ui.label_name.setText('姓名')
         self.ui.label_temp.setText('溫度')
         self.img_path = 'IMG_0485.png'
         self.display_img()
@@ -281,10 +307,8 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.SystemTime.systime.connect(self.getTime) # 槽功能：取得時間資料
         self.SystemTime.start()
         
-        # 點名系統
-        self.rollCall = rollCall()
-        self.rollCall.stdname.connect(self.getRollCall) # 槽功能：取得姓名資料
-        self.rollCall.start()
+
+
         
         # 溫溼度系統
         self.GetTemperature = GetTemperature()
@@ -308,6 +332,6 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         time.sleep(0.5)
         self.ProcessCam.exit()  # 關閉子緒
         self.SystemTime.exit()  # 關閉子緒
-        self.rollCall.exit()  # 關閉子緒
+        #self.rollCall.exit()  # 關閉子緒
         self.GetTemperature.exit()  # 關閉子緒
         QtWidgets.QApplication.closeAllWindows()  # 關閉所有視窗
