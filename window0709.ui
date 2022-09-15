@@ -32,6 +32,9 @@
     <property name="text">
      <string>TextLabel_time</string>
     </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
    </widget>
    <widget class="QLabel" name="label_temp">
     <property name="geometry">
@@ -51,6 +54,9 @@
     <property name="text">
      <string>TextLabel_temp</string>
     </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
    </widget>
    <widget class="QLabel" name="label_pic">
     <property name="geometry">
@@ -61,8 +67,16 @@
       <height>480</height>
      </rect>
     </property>
+    <property name="font">
+     <font>
+      <pointsize>20</pointsize>
+     </font>
+    </property>
     <property name="text">
      <string>TextLabel_picture</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
     </property>
    </widget>
    <widget class="QLabel" name="label_name">
@@ -82,6 +96,9 @@
     </property>
     <property name="text">
      <string>TextLabel_name</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
     </property>
    </widget>
    <widget class="QPushButton" name="camBtn_open">
@@ -127,6 +144,9 @@
     </property>
     <property name="text">
      <string>TextLabel_humi</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
     </property>
    </widget>
   </widget>

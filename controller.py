@@ -8,13 +8,14 @@ import sys, time, threading, cv2
 import numpy as np
 import adafruit_dht
 from board import *
-
+import csv
+#from string import replace
 
 from tflite_runtime.interpreter import Interpreter
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt 
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage, QPixmap ,QFont
 #from PyQt5 import QtWidgets, QtCore
 #from PyQt5.QtCore import QTimer, QPoint, pyqtSignal
 #from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QLabel
@@ -132,11 +133,15 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
             self.cam.release()      # 釋放攝影機
 
 class SystemTime(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 SystemTime 類別
+    
     systime = QtCore.pyqtSignal(str)  # 建立傳遞信號，設定傳遞型態為 str
     def run(self):
         while MainWindow_controller.stop_flag == True :
             gettime = QtCore.QDateTime.currentDateTime() # 抓取現在時間
             times = gettime.toString(Qt.DefaultLocaleLongDate) # 轉換成 str 型態
+            characters = "[CST]" #刪除後面多餘的[CST]
+            for x in range(len(characters)):
+                times= times.replace(characters[x],"")
             self.systime.emit(times) # 發送時間資料
             time.sleep(0.3) # 暫停一小段時間 不然會卡死        
         
@@ -146,32 +151,31 @@ class rollCall(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 rollCall 類�
     def __init__(self, object_name):
         super().__init__()
         self.name = object_name # 修改名稱
-
         self.current = True
         
     def run(self):
         
         while self.current == True :
-            #gettime = QtCore.QTime.currentTime() # 抓取現在時間
-            #getmin = gettime.minute() 
-            #getsec = gettime.second()
             gettime = QtCore.QDateTime.currentDateTime() # 抓取現在時間
             times = gettime.toString(Qt.DefaultLocaleLongDate) # 轉換成 str 型態
-            
+            characters = "[CST]" #刪除後面多餘的[CST]
+            for x in range(len(characters)):
+                times= times.replace(characters[x],"")
+                
             if MainWindow_controller.deplicate_name != self.name :
                 print(self.name,MainWindow_controller.deplicate_name)
                 MainWindow_controller.deplicate_name = self.name
                 
-                student_name = '姓名:' + str(self.name)
+                student_name = '姓名 : ' + str(MainWindow_controller.student_name_list[self.name])
             
                 self.stdname.emit(student_name)
             
                 if self.current == True:
-                    with open('test.csv', 'a', newline='') as f:
-                        print('{},{}'.format(times, self.name),file=f) #儲存資料在csv內
+                    with open('student_record.csv', 'a', newline='') as f:
+                        print('{},{}'.format(times, MainWindow_controller.student_name_list[self.name]),file=f) #儲存資料在csv內
                     self.current = False
-                time.sleep(5)
-                student_name = '姓名:'
+                time.sleep(10)
+                student_name = '姓名'
                 self.stdname.emit(student_name)
                 
                 #MainWindow_controller.deplicate_name = ''
@@ -185,6 +189,8 @@ class GetTemperature(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 GetTemp
     humidity = QtCore.pyqtSignal(int)
     def run(self):
         while MainWindow_controller.stop_flag == True:
+            gettemp=-1 #先宣告一個值，以免未取得值就需要把它印出
+            gethumi=-1
             try:
                 gettemp=dht_device.temperature # 抓取溫溼度
                 gethumi=dht_device.humidity    # 抓取溫溼度
@@ -194,8 +200,6 @@ class GetTemperature(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 GetTemp
                 self.temperature.emit(gettemp)
                 self.humidity.emit(gethumi)
             else:
-                gettemp=-1
-                gethumi=-1
                 self.temperature.emit(gettemp)
                 self.humidity.emit(gethumi)
             time.sleep(10) # 暫停一小段時間，不必實時更新，節省資源
@@ -204,6 +208,7 @@ class GetTemperature(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 GetTemp
 class MainWindow_controller(QtWidgets.QMainWindow):
     stop_flag = True
     deplicate_name = ''
+    student_name_list = {}
 
     def __init__(self, parent=None):
         super().__init__() # in python3, super(Class, self).xxx = super().xxx
@@ -257,13 +262,9 @@ class MainWindow_controller(QtWidgets.QMainWindow):
     def showData(self, img):
         """ 顯示攝影機的影像 """
         self.Ny, self.Nx, _ = img.shape  # 取得影像尺寸
-
-        # 建立 Qimage 物件 (灰階格式)
-        # qimg = QtGui.QImage(img[:,:,0].copy().data, self.Nx, self.Ny, QtGui.QImage.Format_Indexed8)
-
+        
         # 建立 Qimage 物件 (RGB格式)
         qimg = QtGui.QImage(img.data, self.Nx, self.Ny, QtGui.QImage.Format_RGB888).rgbSwapped()
-        #qimg = QtGui.QImage(img.data, self.Nx, self.Ny, QtGui.QImage.Format_RGB888)
         # viewData 的顯示設定
         self.ui.label_pic.setScaledContents(True)  # 尺度可變
         ### 將 Qimage 物件設置到 viewData 上
@@ -290,38 +291,46 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.ui.label_name.setText(student_name) # 修改名稱   
         
     def getTemperature(self, temperature):
-        self.ui.label_temp.setText('溫度={0:0.1f}度'.format(temperature)) # 修改名稱 
+        self.ui.label_temp.setText('溫度：{0:0.1f} 度'.format(temperature)) # 修改名稱 
 
     def getHumidity(self, humidity):
-        self.ui.label_humi.setText('濕度={0:0.1f}%'.format(humidity)) # 修改名稱 
+        self.ui.label_humi.setText('濕度：{0:0.1f} %'.format(humidity)) # 修改名稱 
         
     def setup_control(self):
-       # TODO        
-        self.ui.label_name.setText('姓名')
-        self.ui.label_temp.setText('溫度')
-        self.img_path = 'IMG_0485.png'
-        self.display_img()
+        """主視窗事件"""      
+        self.display_texts() #顯示所有顯示文字
+        self.load_student_name_from_csv() # 從CSV讀取學生姓名
         
         # 取得現在時間
         self.SystemTime = SystemTime() 
         self.SystemTime.systime.connect(self.getTime) # 槽功能：取得時間資料
         self.SystemTime.start()
-        
-
-
-        
+               
         # 溫溼度系統
         self.GetTemperature = GetTemperature()
         self.GetTemperature.temperature.connect(self.getTemperature) # 槽功能：取得資料
         self.GetTemperature.humidity.connect(self.getHumidity) # 槽功能：取得資料
         self.GetTemperature.start()
+    
+    def display_texts(self): # 顯示所有顯示文字
+        self.ui.label_name.setText('姓名')
+        self.ui.label_temp.setText('溫度')
+        self.img_path = 'IMG_0485.png'
+        self.display_img()
+        self.ui.label_pic.setText('影像辨識\n點名系統')
+        self.ui.label_pic.setFont(QFont("Arial",35))
         
-    def display_img(self):
+    def display_img(self): # 顯示圖片
         self.img = cv2.imread(self.img_path)
         height, width, channel = self.img.shape
         bytesPerline = 3 * width
         self.qimg = QImage(self.img, width, height, bytesPerline, QImage.Format_RGB888).rgbSwapped()
         self.ui.label_pic.setPixmap(QPixmap.fromImage(self.qimg))
+        
+    def load_student_name_from_csv(self): # 從CSV讀取學生姓名
+        with open('student_name.csv', mode='r', encoding='utf-8') as inp:
+            self.reader = csv.reader(inp)
+            MainWindow_controller.student_name_list = {rows[0]:rows[1] for rows in self.reader}
         
     def closeEvent(self, event):
         """ 視窗應用程式關閉事件 """
