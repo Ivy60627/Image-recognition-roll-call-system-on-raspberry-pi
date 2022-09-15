@@ -86,20 +86,20 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
             
             for i in range(len(scores)):
                 if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
-                    min_y=int(max(1,(boxes[i][0]*imHeight)))
-                    min_x=int(max(1,(boxes[i][1]*imWidth)))
-                    max_y=int(min(imHeight,(boxes[i][2] *imHeight)))
-                    max_x=int(min(imWidth,(boxes[i][3] *imWidth)))
-                    cv2.rectangle(img, (min_x, min_y), (max_x ,max_y), (10,255,0), 2)
+                    min_y = int(max(1, (boxes[i][0] * imHeight)))
+                    min_x = int(max(1, (boxes[i][1] * imWidth)))
+                    max_y = int(min(imHeight, (boxes[i][2] * imHeight)))
+                    max_x = int(min(imWidth, (boxes[i][3] * imWidth)))
+                    cv2.rectangle(img, (min_x, min_y), (max_x ,max_y), (10, 255, 0), 2)
                     object_name = labels[int(classes[i])]
                     label = "%s: %d%%" %(object_name, int(scores[i] * 100))                    
                     labelSize, baseLine = cv2.getTextSize(label,
                                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7,2)
-                    label_min_y = max(min_x,labelSize[1] + 10)
-                    cv2.rectangle(img, (min_x, label_min_y - labelSize[1] - 10),
-                                  (min_x + labelSize[0], label_min_y + baseLine -10),
+                    label_min_y = max(min_x ,labelSize[1] + 10)
+                    cv2.rectangle(img, (min_x , min_y- labelSize[1] - 10),
+                                  (min_x + labelSize[0], min_y + baseLine - 10),
                                   (255, 255, 255), cv2.FILLED)
-                    cv2.putText(img, label, (min_x, label_min_y - 7),
+                    cv2.putText(img, label, (min_x, min_y - 7),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
                     
                     if self.fps == 1:
@@ -133,7 +133,7 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
             self.cam.release()      # 釋放攝影機
 
 class SystemTime(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 SystemTime 類別
-    
+    """ 顯示系統時間 """
     systime = QtCore.pyqtSignal(str)  # 建立傳遞信號，設定傳遞型態為 str
     def run(self):
         while MainWindow_controller.stop_flag == True :
@@ -142,10 +142,14 @@ class SystemTime(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 SystemTime 
             characters = "[CST]" #刪除後面多餘的[CST]
             for x in range(len(characters)):
                 times= times.replace(characters[x],"")
+            split_times = times.split()    
+            split_times.insert(2,"\n")
+            times=' '.join(split_times)
             self.systime.emit(times) # 發送時間資料
             time.sleep(0.3) # 暫停一小段時間 不然會卡死        
         
-class rollCall(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 rollCall 類別    
+class rollCall(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 rollCall 類別
+    """ 修改姓名欄位，並新增時間跟姓名到CSV檔案 """
     stdname = QtCore.pyqtSignal(str)
     
     def __init__(self, object_name):
@@ -153,8 +157,7 @@ class rollCall(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 rollCall 類�
         self.name = object_name # 修改名稱
         self.current = True
         
-    def run(self):
-        
+    def run(self):        
         while self.current == True :
             gettime = QtCore.QDateTime.currentDateTime() # 抓取現在時間
             times = gettime.toString(Qt.DefaultLocaleLongDate) # 轉換成 str 型態
@@ -163,45 +166,40 @@ class rollCall(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 rollCall 類�
                 times= times.replace(characters[x],"")
                 
             if MainWindow_controller.deplicate_name != self.name :
-                print(self.name,MainWindow_controller.deplicate_name)
                 MainWindow_controller.deplicate_name = self.name
                 
-                student_name = '姓名 : ' + str(MainWindow_controller.student_name_list[self.name])
-            
+                student_name = '姓名：' + str(MainWindow_controller.student_name_list[self.name])            
                 self.stdname.emit(student_name)
             
                 if self.current == True:
-                    with open('student_record.csv', 'a', newline='') as f:
-                        print('{},{}'.format(times, MainWindow_controller.student_name_list[self.name]),file=f) #儲存資料在csv內
-                    self.current = False
+                    with open('student_record.csv', 'a', newline='') as f: # 儲存資料在csv內
+                        print('{},{}'.format(times, MainWindow_controller.student_name_list[self.name]),file=f)
+                        self.current = False
                 time.sleep(10)
+                
                 student_name = '姓名'
                 self.stdname.emit(student_name)
                 
                 #MainWindow_controller.deplicate_name = ''
                           
-            time.sleep(3) # 暫停一小段時間 不然會卡死            
-            #self.stdname.disconnect()
-        
+            time.sleep(2) # 暫停一小段時間 不然會卡死                    
 
 class GetTemperature(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 GetTemperature 類別
+    """ 取得溫溼度資訊，並修改溫溼度的欄位 """
     temperature = QtCore.pyqtSignal(int)  # 建立傳遞信號，設定傳遞型態為 int
     humidity = QtCore.pyqtSignal(int)
+    gettemp=-1 # 先宣告一個值，以免未取得值就需要把它印出
+    gethumi=-1
     def run(self):
         while MainWindow_controller.stop_flag == True:
-            gettemp=-1 #先宣告一個值，以免未取得值就需要把它印出
-            gethumi=-1
             try:
-                gettemp=dht_device.temperature # 抓取溫溼度
-                gethumi=dht_device.humidity    # 抓取溫溼度
+                self.gettemp=dht_device.temperature # 抓取溫溼度
+                self.gethumi=dht_device.humidity    # 抓取溫溼度
             except RuntimeError:
-                pass
-            if gethumi is not None and gettemp is not None:
-                self.temperature.emit(gettemp)
-                self.humidity.emit(gethumi)
-            else:
-                self.temperature.emit(gettemp)
-                self.humidity.emit(gethumi)
+                pass           
+            self.temperature.emit(self.gettemp)
+            self.humidity.emit(self.gethumi)
+            
             time.sleep(10) # 暫停一小段時間，不必實時更新，節省資源
             
                     
@@ -294,7 +292,7 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.ui.label_temp.setText('溫度：{0:0.1f} 度'.format(temperature)) # 修改名稱 
 
     def getHumidity(self, humidity):
-        self.ui.label_humi.setText('濕度：{0:0.1f} %'.format(humidity)) # 修改名稱 
+        self.ui.label_humi.setText('濕度：{0:0.1f} ％'.format(humidity)) # 修改名稱 
         
     def setup_control(self):
         """主視窗事件"""      
@@ -312,11 +310,9 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.GetTemperature.humidity.connect(self.getHumidity) # 槽功能：取得資料
         self.GetTemperature.start()
     
-    def display_texts(self): # 顯示所有顯示文字
+    def display_texts(self): # 顯示所有顯示文字      
         self.ui.label_name.setText('姓名')
         self.ui.label_temp.setText('溫度')
-        self.img_path = 'IMG_0485.png'
-        self.display_img()
         self.ui.label_pic.setText('影像辨識\n點名系統')
         self.ui.label_pic.setFont(QFont("Arial",35))
         
@@ -328,6 +324,7 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.ui.label_pic.setPixmap(QPixmap.fromImage(self.qimg))
         
     def load_student_name_from_csv(self): # 從CSV讀取學生姓名
+        """ 讀取CSV資料，並轉換成字典 """
         with open('student_name.csv', mode='r', encoding='utf-8') as inp:
             self.reader = csv.reader(inp)
             MainWindow_controller.student_name_list = {rows[0]:rows[1] for rows in self.reader}
@@ -344,3 +341,4 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         #self.rollCall.exit()  # 關閉子緒
         self.GetTemperature.exit()  # 關閉子緒
         QtWidgets.QApplication.closeAllWindows()  # 關閉所有視窗
+        

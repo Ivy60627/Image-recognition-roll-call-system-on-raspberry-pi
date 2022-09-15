@@ -13,5 +13,6 @@ if __name__ == '__main__':
     import sys
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow_controller()
+    window.setWindowTitle("影像辨識點名系統")
     window.show()
     sys.exit(app.exec_())
