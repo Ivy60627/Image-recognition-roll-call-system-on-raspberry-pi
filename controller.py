@@ -270,13 +270,17 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.ui.label_pic.setPixmap(QtGui.QPixmap.fromImage(qimg))
 
         # Frame Rate 計算並顯示到狀態欄上
- """       if self.frame_num == 0:
+       
+        """        
+        if self.frame_num == 0:
             self.time_start = time.time()
         if self.frame_num >= 0:
             self.frame_num += 1
             self.t_total = time.time() - self.time_start
             if self.frame_num % 100 == 0:
-                self.frame_rate = float(self.frame_num) / self.t_total"""
+                self.frame_rate = float(self.frame_num) / self.t_total
+        """
+
 
     def getTime(self, times):
         self.ui.label_time.setText(times) # 修改現在時間
