@@ -18,7 +18,7 @@ from PyQt5.QtGui import QImage, QPixmap ,QFont
 
 from UI import Ui_MainWindow
 
-data_folder = "ssd_mobilenet/"
+data_folder = "ssd_mobilenet/1011/"
 EfficientDetLite = 'ef1' #修改EfficientDetLite的版本
 
 model_path = data_folder + "model_" + EfficientDetLite + ".tflite"
@@ -36,7 +36,7 @@ interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 _, height, width, _ = interpreter.get_input_details()[0]["shape"]
-
+print("height = " + str(height) + ", width = " + str(width))
 class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
     rawdata = QtCore.pyqtSignal(np.ndarray)  # 建立傳遞信號，需設定傳遞型態為 np.ndarray
     getstdname = QtCore.pyqtSignal(str)
@@ -54,6 +54,7 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
         self.cam = cv2.VideoCapture(0)
         self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cam.set(cv2.CAP_PROP_FPS, 2)
         self.fps = 0 
         # 判斷攝影機是否正常連接
         if self.cam is None or not self.cam.isOpened():
@@ -102,6 +103,22 @@ class Camera(QtCore.QThread):  # 繼承 QtCore.QThread 來建立 Camera 類別
                     if self.fps == 1:
                         self.getstdname.emit(object_name) # control speed
                         
+                elif ( 0.3 < scores[i] and scores[i] < min_conf_threshold):
+                    min_y = int(max(1, (boxes[i][0] * imHeight)))
+                    min_x = int(max(1, (boxes[i][1] * imWidth)))
+                    max_y = int(min(imHeight, (boxes[i][2] * imHeight)))
+                    max_x = int(min(imWidth, (boxes[i][3] * imWidth)))
+                    cv2.rectangle(img, (min_x, min_y), (max_x ,max_y), (10, 255, 0), 2)
+                    object_name = labels[int(classes[i])]
+                    label = "Others"                   
+                    labelSize, baseLine = cv2.getTextSize(label,
+                                                          cv2.FONT_HERSHEY_SIMPLEX, 0.7,2)
+                    label_min_y = max(min_x ,labelSize[1] + 10)
+                    cv2.rectangle(img, (min_x , min_y- labelSize[1] - 10),
+                                  (min_x + labelSize[0], min_y + baseLine - 10),
+                                  (255, 255, 255), cv2.FILLED)
+                    cv2.putText(img, label, (min_x, min_y - 7),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
             if ret:
                 self.rawdata.emit(img)    # 發送影像
             else:    # 例外處理
